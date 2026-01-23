@@ -115,10 +115,10 @@ func TestChecker_CheckPodStatus(t *testing.T) {
 
 func TestChecker_IsPodHealthy(t *testing.T) {
 	tests := []struct {
-		name     string
-		pod      *corev1.Pod
-		opts     HealthCheckOptions
-		expected bool
+		name        string
+		pod         *corev1.Pod
+		opts        HealthCheckOptions
+		expected    bool
 		expectError bool
 	}{
 		{
@@ -135,8 +135,8 @@ func TestChecker_IsPodHealthy(t *testing.T) {
 					PodIP: "10.0.0.1",
 				},
 			},
-			opts:     HealthCheckOptions{},
-			expected: true,
+			opts:        HealthCheckOptions{},
+			expected:    true,
 			expectError: false,
 		},
 		{
@@ -146,8 +146,8 @@ func TestChecker_IsPodHealthy(t *testing.T) {
 					Phase: corev1.PodPending,
 				},
 			},
-			opts:     HealthCheckOptions{},
-			expected: false,
+			opts:        HealthCheckOptions{},
+			expected:    false,
 			expectError: false,
 		},
 		{
@@ -163,8 +163,8 @@ func TestChecker_IsPodHealthy(t *testing.T) {
 					},
 				},
 			},
-			opts:     HealthCheckOptions{},
-			expected: false,
+			opts:        HealthCheckOptions{},
+			expected:    false,
 			expectError: false,
 		},
 	}

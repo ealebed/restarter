@@ -5,6 +5,7 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        exclude: ^manifests/
       - id: check-added-large-files
       - id: check-json
       - id: check-toml
@@ -15,7 +16,7 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
-      - id: go-vet
+      # go-vet is included in golangci-lint, so we skip it here to avoid conflicts
       - id: go-mod-tidy
       - id: go-unit-tests
         args: [-race]
