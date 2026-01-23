@@ -1,0 +1,51 @@
+name: Build & Push Container Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build from'
+        required: false
+        type: string
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: 'Build & push image'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Checkout code'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - name: 'Decide on tag'
+        id: tagger
+        run: |
+          TIMESTAMP=$(date -u +'%Y.%m.%d-%H.%M')
+          BRANCH="${{ github.event.inputs.branch || github.ref_name }}"
+          if [[ "${BRANCH}" == "master" ]]; then
+            echo "TAG=${TIMESTAMP}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${TIMESTAMP}-SNAPSHOT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 'Login to Docker Hub'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 'Set up Docker Buildx'
+        uses: docker/setup-buildx-action@v3
+
+      - name: 'Build and push restarter container image'
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/restarter:${{ steps.tagger.outputs.tag }}
+          context: .
+          file: ./Dockerfile
