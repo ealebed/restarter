@@ -117,7 +117,7 @@ func (c *Checker) checkHTTPHealth(ctx context.Context, pod *corev1.Pod, healthCh
 	// Construct full URL with default port 8080
 	url := fmt.Sprintf("http://%s:8080%s", pod.Status.PodIP, healthCheckURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -126,7 +126,12 @@ func (c *Checker) checkHTTPHealth(ctx context.Context, pod *corev1.Pod, healthCh
 	if err != nil {
 		return false, nil // Pod is unhealthy if we can't reach it
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log error but don't fail the health check
+			_ = closeErr
+		}
+	}()
 
 	// Consider 2xx and 3xx status codes as healthy
 	return resp.StatusCode >= 200 && resp.StatusCode < 400, nil
@@ -148,7 +153,12 @@ func (c *Checker) checkTCPPort(ctx context.Context, pod *corev1.Pod, port int) (
 	if err != nil {
 		return false, nil // Port is not accepting connections
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			// Log error but don't fail the health check
+			_ = closeErr
+		}
+	}()
 
 	return true, nil
 }

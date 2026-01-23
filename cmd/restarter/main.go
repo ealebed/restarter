@@ -35,15 +35,25 @@ func getEnv(key, defaultValue string) string {
 }
 
 var (
-	namespace          = flag.String("namespace", getEnv("NAMESPACE", "default"), "Kubernetes namespace (env: NAMESPACE)")
-	statefulSetName    = flag.String("statefulset", getEnv("STATEFULSET_NAME", ""), "StatefulSet name to monitor (env: STATEFULSET_NAME)")
-	podLabelSelector   = flag.String("pod-label-selector", getEnv("POD_LABEL_SELECTOR", ""), "Pod label selector (e.g., 'app=router,component=druid') (env: POD_LABEL_SELECTOR)")
-	healthCheckURL     = flag.String("health-check-url", getEnv("HEALTH_CHECK_URL", ""), "HTTP health check URL path (e.g., /health) (env: HEALTH_CHECK_URL)")
-	healthCheckTimeout = flag.Duration("health-check-timeout", mustParseDuration(getEnv("HEALTH_CHECK_TIMEOUT", "5s")), "Timeout for health checks (env: HEALTH_CHECK_TIMEOUT)")
-	execCheckCommand   = flag.String("exec-check-command", getEnv("EXEC_CHECK_COMMAND", ""), "Command to execute in container for health check (e.g., 'ps aux | grep java') (env: EXEC_CHECK_COMMAND)")
-	execCheckContainer = flag.String("exec-check-container", getEnv("EXEC_CHECK_CONTAINER", ""), "Container name for exec check (empty for first container) (env: EXEC_CHECK_CONTAINER)")
-	execCheckExpected  = flag.String("exec-check-expected", getEnv("EXEC_CHECK_EXPECTED", ""), "Expected output from exec command (empty to just check exit code) (env: EXEC_CHECK_EXPECTED)")
-	tcpCheckPort       = flag.Int("tcp-check-port", mustParseInt(getEnv("TCP_CHECK_PORT", "0")), "TCP port to check for connectivity (0 to disable) (env: TCP_CHECK_PORT)")
+	namespace = flag.String("namespace", getEnv("NAMESPACE", "default"),
+		"Kubernetes namespace (env: NAMESPACE)")
+	statefulSetName = flag.String("statefulset", getEnv("STATEFULSET_NAME", ""),
+		"StatefulSet name to monitor (env: STATEFULSET_NAME)")
+	podLabelSelector = flag.String("pod-label-selector", getEnv("POD_LABEL_SELECTOR", ""),
+		"Pod label selector (e.g., 'app=router,component=druid') (env: POD_LABEL_SELECTOR)")
+	healthCheckURL = flag.String("health-check-url", getEnv("HEALTH_CHECK_URL", ""),
+		"HTTP health check URL path (e.g., /health) (env: HEALTH_CHECK_URL)")
+	healthCheckTimeout = flag.Duration("health-check-timeout",
+		mustParseDuration(getEnv("HEALTH_CHECK_TIMEOUT", "5s")),
+		"Timeout for health checks (env: HEALTH_CHECK_TIMEOUT)")
+	execCheckCommand = flag.String("exec-check-command", getEnv("EXEC_CHECK_COMMAND", ""),
+		"Command to execute in container for health check (e.g., 'ps aux | grep java') (env: EXEC_CHECK_COMMAND)")
+	execCheckContainer = flag.String("exec-check-container", getEnv("EXEC_CHECK_CONTAINER", ""),
+		"Container name for exec check (empty for first container) (env: EXEC_CHECK_CONTAINER)")
+	execCheckExpected = flag.String("exec-check-expected", getEnv("EXEC_CHECK_EXPECTED", ""),
+		"Expected output from exec command (empty to just check exit code) (env: EXEC_CHECK_EXPECTED)")
+	tcpCheckPort = flag.Int("tcp-check-port", mustParseInt(getEnv("TCP_CHECK_PORT", "0")),
+		"TCP port to check for connectivity (0 to disable) (env: TCP_CHECK_PORT)")
 )
 
 // mustParseDuration parses a duration string or panics.
