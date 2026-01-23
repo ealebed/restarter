@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: restarter
+  namespace: druid
+  labels:
+    app: restarter
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: restarter
+  namespace: druid
+  labels:
+    app: restarter
+rules:
+  # Required to get, list, and delete pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  # Required for exec-based health checks
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  # Required to get and list StatefulSets (for filtering by StatefulSet name)
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: restarter
+  namespace: druid
+  labels:
+    app: restarter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: restarter
+subjects:
+  - kind: ServiceAccount
+    name: restarter
+    namespace: druid
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restarter
+  namespace: druid
+  labels:
+    app: restarter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: restarter
+  template:
+    metadata:
+      labels:
+        app: restarter
+    spec:
+      serviceAccountName: restarter
+      containers:
+      - name: restarter
+        image: your-registry/restarter:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        # Required: Either STATEFULSET_NAME or POD_LABEL_SELECTOR must be set
+        - name: NAMESPACE
+          value: "druid"
+        # Option 1: Monitor by StatefulSet name
+        - name: STATEFULSET_NAME
+          value: ""
+        # Option 2: Monitor by pod labels (uncomment to use instead of STATEFULSET_NAME)
+        # - name: POD_LABEL_SELECTOR
+        #   value: "app=router,component=druid"
+        # Optional: HTTP health check configuration
+        - name: HEALTH_CHECK_URL
+          value: ""
+        - name: HEALTH_CHECK_TIMEOUT
+          value: "5s"
+        # Optional: Exec-based health check (detects stuck applications)
+        # - name: EXEC_CHECK_COMMAND
+        #   value: "ps aux | grep -v grep | grep java"
+        # - name: EXEC_CHECK_EXPECTED
+        #   value: "java"
+        # - name: EXEC_CHECK_CONTAINER
+        #   value: ""  # Empty for first container
+        # Optional: TCP port check
+        # - name: TCP_CHECK_PORT
+        #   value: "8080"
+        # Enable health probes (controller-runtime provides /healthz and /readyz endpoints)
+        - name: HEALTH_PROBE_BIND_ADDRESS
+          value: ":8080"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        # Health probes (enabled via HEALTH_PROBE_BIND_ADDRESS env var)
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534

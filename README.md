@@ -242,6 +242,53 @@ The project includes a GitHub Actions workflow (`.github/workflows/build.yml`) t
 
 ## Development
 
+### Pre-commit Hooks
+
+This project uses pre-commit hooks to ensure code quality before commits. The hooks automatically format code, run linters, and execute tests.
+
+#### Installation
+
+1. **Install pre-commit:**
+   ```bash
+   pip install pre-commit
+   ```
+   or
+   ```bash
+   brew install pre-commit
+   ```
+
+2. **Install the Git hooks:**
+   ```bash
+   pre-commit install
+   ```
+   This sets up the necessary Git hook scripts in `.git/hooks` to run the hooks defined in `.pre-commit-config.yaml`.
+
+3. **Run hooks manually on all files:**
+   ```bash
+   pre-commit run --all-files
+   ```
+
+4. **Install additional dependencies (if needed):**
+   ```bash
+   # golangci-lint (required for linting)
+   brew install golangci-lint
+   # or download from https://golangci-lint.run/usage/install/
+   ```
+
+#### What the hooks do
+
+The pre-commit hooks automatically:
+- Format code with `go fmt`
+- Run `go vet` for static analysis
+- Run `golangci-lint` for comprehensive linting
+- Run `go mod tidy` to ensure dependencies are clean
+- Run tests with race detector
+- Check for common issues (trailing whitespace, large files, merge conflicts, private keys, etc.)
+
+The pre-commit hooks align with CI workflow checks to catch issues locally before committing.
+
+### Manual Development Commands
+
 ```bash
 # Format code
 make fmt
