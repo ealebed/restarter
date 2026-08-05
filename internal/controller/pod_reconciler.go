@@ -22,6 +22,8 @@ import (
 	"github.com/ealebed/restarter/internal/health"
 )
 
+const requeueDelay = 10 * time.Second
+
 // PodReconciler reconciles Pods based on StatefulSet name and/or label selector.
 type PodReconciler struct {
 	client.Client
@@ -31,23 +33,22 @@ type PodReconciler struct {
 	Namespace          string
 	HealthChecker      *health.Checker
 	HealthCheckOptions health.HealthCheckOptions
+
+	parsedLabelSelector labels.Selector
 }
 
 // Reconcile is called whenever a Pod is created, updated, or deleted.
 func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("pod", req.NamespacedName)
 
-	// Get the pod
 	var pod corev1.Pod
 	if err := r.Get(ctx, req.NamespacedName, &pod); err != nil {
 		if errors.IsNotFound(err) {
-			// Pod was deleted, nothing to do
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get pod: %w", err)
 	}
 
-	// Verify the pod matches our filtering criteria
 	if !r.matchesFilter(ctx, &pod) {
 		logger.V(1).Info("Pod does not match filter criteria, skipping")
 		return ctrl.Result{}, nil
@@ -55,79 +56,64 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	logger.Info("Reconciling pod", "phase", pod.Status.Phase)
 
-	// Check if pod is healthy
 	healthy, err := r.HealthChecker.IsPodHealthy(ctx, &pod, r.HealthCheckOptions)
 	if err != nil {
 		logger.Error(err, "Failed to check pod health")
-		// Requeue after a short delay to retry
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: requeueDelay}, nil
 	}
 
-	if !healthy {
-		logger.Info("Pod is unhealthy, triggering restart")
-
-		// Also validate pod status
-		if !r.HealthChecker.CheckPodStatus(&pod) {
-			logger.Info("Pod status check failed, proceeding with restart")
-		}
-
-		// Delete the pod to trigger restart by StatefulSet controller
-		if err := r.Delete(ctx, &pod); err != nil {
-			if errors.IsNotFound(err) {
-				// Pod was already deleted, nothing to do
-				return ctrl.Result{}, nil
-			}
-			logger.Error(err, "Failed to delete pod")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		}
-
-		logger.Info("Successfully triggered pod restart")
+	if healthy {
+		logger.V(1).Info("Pod is healthy")
 		return ctrl.Result{}, nil
 	}
 
-	logger.V(1).Info("Pod is healthy")
+	logger.Info("Pod is unhealthy, triggering restart")
+	if err := r.Delete(ctx, &pod); err != nil {
+		if errors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "Failed to delete pod")
+		return ctrl.Result{RequeueAfter: requeueDelay}, nil
+	}
+
+	logger.Info("Successfully triggered pod restart")
 	return ctrl.Result{}, nil
 }
 
 // matchesFilter checks if a pod matches the filtering criteria (StatefulSet and/or label selector).
 func (r *PodReconciler) matchesFilter(ctx context.Context, pod *corev1.Pod) bool {
-	// If StatefulSet name is provided, verify pod belongs to it
-	if r.StatefulSetName != "" {
-		if !r.belongsToStatefulSet(ctx, pod) {
-			return false
-		}
+	if r.StatefulSetName != "" && !r.belongsToStatefulSet(ctx, pod) {
+		return false
 	}
 
-	// If pod label selector is provided, verify pod matches it
-	if r.PodLabelSelector != "" {
-		selector, err := labels.Parse(r.PodLabelSelector)
+	if r.PodLabelSelector == "" {
+		return true
+	}
+
+	selector := r.parsedLabelSelector
+	if selector == nil {
+		var err error
+		selector, err = labels.Parse(r.PodLabelSelector)
 		if err != nil {
 			log.FromContext(ctx).Error(err, "Failed to parse pod label selector")
 			return false
 		}
-		if !selector.Matches(labels.Set(pod.Labels)) {
-			return false
-		}
 	}
 
-	return true
+	return selector.Matches(labels.Set(pod.Labels))
 }
 
 // belongsToStatefulSet checks if a pod belongs to the target StatefulSet.
 func (r *PodReconciler) belongsToStatefulSet(ctx context.Context, pod *corev1.Pod) bool {
-	// Get the StatefulSet
 	var statefulSet appsv1.StatefulSet
-	statefulSetKey := types.NamespacedName{
+	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: r.Namespace,
 		Name:      r.StatefulSetName,
-	}
-
-	if err := r.Get(ctx, statefulSetKey, &statefulSet); err != nil {
+	}, &statefulSet); err != nil {
 		log.FromContext(ctx).Error(err, "Failed to get StatefulSet")
 		return false
 	}
 
-	// Check if pod has the StatefulSet's selector labels
 	if statefulSet.Spec.Selector == nil {
 		return false
 	}
@@ -143,20 +129,18 @@ func (r *PodReconciler) belongsToStatefulSet(ctx context.Context, pod *corev1.Po
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PodReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// Create predicates to filter pods
 	predicates := []predicate.Predicate{
-		// Filter by namespace
 		predicate.NewPredicateFuncs(func(obj client.Object) bool {
 			return obj.GetNamespace() == r.Namespace
 		}),
 	}
 
-	// If pod label selector is provided, add it as a predicate for efficiency
 	if r.PodLabelSelector != "" {
 		selector, err := labels.Parse(r.PodLabelSelector)
 		if err != nil {
 			return fmt.Errorf("failed to parse pod label selector: %w", err)
 		}
+		r.parsedLabelSelector = selector
 		predicates = append(predicates, predicate.NewPredicateFuncs(func(obj client.Object) bool {
 			pod, ok := obj.(*corev1.Pod)
 			if !ok {

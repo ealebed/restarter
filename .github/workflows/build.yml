@@ -15,6 +15,7 @@ jobs:
   build:
     name: 'Build & push image'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: 'Checkout code'
@@ -28,9 +29,9 @@ jobs:
           TIMESTAMP=$(date -u +'%Y.%m.%d-%H.%M')
           BRANCH="${{ github.event.inputs.branch || github.ref_name }}"
           if [[ "${BRANCH}" == "master" ]]; then
-            echo "TAG=${TIMESTAMP}" >> $GITHUB_OUTPUT
+            echo "TAG=${TIMESTAMP}" >> "$GITHUB_OUTPUT"
           else
-            echo "TAG=${TIMESTAMP}-SNAPSHOT" >> $GITHUB_OUTPUT
+            echo "TAG=${TIMESTAMP}-SNAPSHOT" >> "$GITHUB_OUTPUT"
           fi
 
       - name: 'Login to Docker Hub'
@@ -49,3 +50,5 @@ jobs:
           tags: ${{ vars.DOCKERHUB_USERNAME }}/restarter:${{ steps.tagger.outputs.tag }}
           context: .
           file: ./Dockerfile
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -50,21 +51,16 @@ type HealthCheckOptions struct {
 
 // IsPodHealthy checks if a pod is healthy based on its status and optional health checks.
 func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts HealthCheckOptions) (bool, error) {
-	// Layer 1: Check pod phase
 	if pod.Status.Phase != corev1.PodRunning {
 		return false, nil
 	}
 
-	// Layer 2: Check if all containers are ready
 	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodReady {
-			if condition.Status != corev1.ConditionTrue {
-				return false, nil
-			}
+		if condition.Type == corev1.PodReady && condition.Status != corev1.ConditionTrue {
+			return false, nil
 		}
 	}
 
-	// Layer 3: HTTP health check (if configured)
 	if opts.HTTPCheckURL != "" {
 		healthy, err := c.checkHTTPHealth(ctx, pod, opts.HTTPCheckURL)
 		if err != nil {
@@ -75,7 +71,6 @@ func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts Health
 		}
 	}
 
-	// Layer 4: TCP port check (if configured)
 	if opts.TCPPort > 0 {
 		healthy, err := c.checkTCPPort(ctx, pod, opts.TCPPort)
 		if err != nil {
@@ -86,7 +81,6 @@ func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts Health
 		}
 	}
 
-	// Layer 5: Exec command check (if configured)
 	if opts.ExecCommand != "" {
 		healthy, err := c.checkExecCommand(ctx, pod, opts.ExecCommand, opts.ContainerName, opts.ExpectedOutput)
 		if err != nil {
@@ -100,21 +94,13 @@ func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts Health
 	return true, nil
 }
 
-// IsPodHealthyLegacy is the legacy method for backward compatibility.
-func (c *Checker) IsPodHealthyLegacy(ctx context.Context, pod *corev1.Pod, healthCheckURL string) (bool, error) {
-	return c.IsPodHealthy(ctx, pod, HealthCheckOptions{
-		HTTPCheckURL: healthCheckURL,
-	})
-}
-
 // checkHTTPHealth performs an HTTP health check on a pod.
 func (c *Checker) checkHTTPHealth(ctx context.Context, pod *corev1.Pod, healthCheckURL string) (bool, error) {
 	if pod.Status.PodIP == "" {
 		return false, fmt.Errorf("pod IP is not available")
 	}
 
-	// healthCheckURL should be a path (e.g., "/health" or "/status/health")
-	// Construct full URL with default port 8080
+	// healthCheckURL is a path (e.g., "/health"); port defaults to 8080.
 	url := fmt.Sprintf("http://%s:8080%s", pod.Status.PodIP, healthCheckURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
@@ -124,16 +110,10 @@ func (c *Checker) checkHTTPHealth(ctx context.Context, pod *corev1.Pod, healthCh
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return false, nil // Pod is unhealthy if we can't reach it
+		return false, nil // unreachable → unhealthy
 	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log error but don't fail the health check
-			_ = closeErr
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
-	// Consider 2xx and 3xx status codes as healthy
 	return resp.StatusCode >= 200 && resp.StatusCode < 400, nil
 }
 
@@ -143,22 +123,12 @@ func (c *Checker) checkTCPPort(ctx context.Context, pod *corev1.Pod, port int) (
 		return false, fmt.Errorf("pod IP is not available")
 	}
 
-	address := fmt.Sprintf("%s:%d", pod.Status.PodIP, port)
-
-	dialer := net.Dialer{
-		Timeout: c.timeout,
-	}
-
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	dialer := net.Dialer{Timeout: c.timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", pod.Status.PodIP, port))
 	if err != nil {
-		return false, nil // Port is not accepting connections
+		return false, nil // not accepting connections → unhealthy
 	}
-	defer func() {
-		if closeErr := conn.Close(); closeErr != nil {
-			// Log error but don't fail the health check
-			_ = closeErr
-		}
-	}()
+	defer func() { _ = conn.Close() }()
 
 	return true, nil
 }
@@ -173,13 +143,11 @@ func (c *Checker) checkExecCommand(ctx context.Context, pod *corev1.Pod, command
 		return false, fmt.Errorf("pod has no containers")
 	}
 
-	// Determine container name
 	container := containerName
 	if container == "" {
 		container = pod.Spec.Containers[0].Name
 	}
 
-	// Create exec request
 	req := c.k8sClient.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(pod.Name).
@@ -199,68 +167,17 @@ func (c *Checker) checkExecCommand(ctx context.Context, pod *corev1.Pod, command
 		return false, fmt.Errorf("failed to create executor: %w", err)
 	}
 
-	// Capture output
 	var stdout, stderr bytes.Buffer
-	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+	if err := exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
-	})
-
-	// Check if command executed successfully
-	if err != nil {
-		return false, nil // Command failed or timed out
+	}); err != nil {
+		return false, nil // command failed or timed out → unhealthy
 	}
 
-	// If expected output is specified, check if it matches
-	if expectedOutput != "" {
-		output := stdout.String()
-		if output != expectedOutput && !contains(output, expectedOutput) {
-			return false, nil // Output doesn't match expected
-		}
+	if expectedOutput != "" && !strings.Contains(stdout.String(), expectedOutput) {
+		return false, nil
 	}
 
 	return true, nil
-}
-
-// contains checks if a string contains a substring.
-func contains(s, substr string) bool {
-	if len(substr) > len(s) {
-		return false
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// CheckPodStatus checks if a pod has problematic status conditions.
-func (c *Checker) CheckPodStatus(pod *corev1.Pod) bool {
-	// Check for common problematic conditions
-	for _, condition := range pod.Status.Conditions {
-		if condition.Type == corev1.PodReady {
-			if condition.Status != corev1.ConditionTrue {
-				return false
-			}
-		}
-		if condition.Type == corev1.PodScheduled {
-			if condition.Status != corev1.ConditionTrue {
-				return false
-			}
-		}
-	}
-
-	// Check container statuses
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if !containerStatus.Ready {
-			return false
-		}
-		if containerStatus.State.Waiting != nil {
-			// Pod is waiting (possibly stuck)
-			return false
-		}
-	}
-
-	return true
 }
