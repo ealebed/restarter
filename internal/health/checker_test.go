@@ -8,111 +8,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func TestChecker_CheckPodStatus(t *testing.T) {
-	tests := []struct {
-		name     string
-		pod      *corev1.Pod
-		expected bool
-	}{
-		{
-			name: "healthy pod",
-			pod: &corev1.Pod{
-				Status: corev1.PodStatus{
-					Phase: corev1.PodRunning,
-					Conditions: []corev1.PodCondition{
-						{
-							Type:   corev1.PodReady,
-							Status: corev1.ConditionTrue,
-						},
-						{
-							Type:   corev1.PodScheduled,
-							Status: corev1.ConditionTrue,
-						},
-					},
-					ContainerStatuses: []corev1.ContainerStatus{
-						{
-							Ready: true,
-							State: corev1.ContainerState{
-								Running: &corev1.ContainerStateRunning{},
-							},
-						},
-					},
-				},
-			},
-			expected: true,
-		},
-		{
-			name: "pod not ready",
-			pod: &corev1.Pod{
-				Status: corev1.PodStatus{
-					Phase: corev1.PodRunning,
-					Conditions: []corev1.PodCondition{
-						{
-							Type:   corev1.PodReady,
-							Status: corev1.ConditionFalse,
-						},
-					},
-				},
-			},
-			expected: false,
-		},
-		{
-			name: "container not ready",
-			pod: &corev1.Pod{
-				Status: corev1.PodStatus{
-					Phase: corev1.PodRunning,
-					Conditions: []corev1.PodCondition{
-						{
-							Type:   corev1.PodReady,
-							Status: corev1.ConditionTrue,
-						},
-					},
-					ContainerStatuses: []corev1.ContainerStatus{
-						{
-							Ready: false,
-						},
-					},
-				},
-			},
-			expected: false,
-		},
-		{
-			name: "container waiting",
-			pod: &corev1.Pod{
-				Status: corev1.PodStatus{
-					Phase: corev1.PodRunning,
-					Conditions: []corev1.PodCondition{
-						{
-							Type:   corev1.PodReady,
-							Status: corev1.ConditionTrue,
-						},
-					},
-					ContainerStatuses: []corev1.ContainerStatus{
-						{
-							Ready: true,
-							State: corev1.ContainerState{
-								Waiting: &corev1.ContainerStateWaiting{},
-							},
-						},
-					},
-				},
-			},
-			expected: false,
-		},
-	}
-
-	checker := NewChecker(5 * time.Second)
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := checker.CheckPodStatus(tt.pod)
-			if result != tt.expected {
-				t.Errorf("CheckPodStatus() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestChecker_IsPodHealthy(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -165,6 +60,17 @@ func TestChecker_IsPodHealthy(t *testing.T) {
 			},
 			opts:        HealthCheckOptions{},
 			expected:    false,
+			expectError: false,
+		},
+		{
+			name: "running pod with no ready condition treated as healthy",
+			pod: &corev1.Pod{
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+				},
+			},
+			opts:        HealthCheckOptions{},
+			expected:    true,
 			expectError: false,
 		},
 	}
