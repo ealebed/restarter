@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"os"
 	"strconv"
@@ -72,20 +73,31 @@ var (
 		"Expected output from exec command (empty to just check exit code) (env: EXEC_CHECK_EXPECTED)")
 	tcpCheckPort = flag.Int("tcp-check-port", parseIntOrDefault(getEnv("TCP_CHECK_PORT", "0"), 0),
 		"TCP port to check for connectivity (0 to disable) (env: TCP_CHECK_PORT)")
+	httpCheckPort = flag.Int("http-check-port", parseIntOrDefault(getEnv("HTTP_CHECK_PORT", "0"), 0),
+		"HTTP health check port (0 defaults to 8080 when --health-check-url is set) (env: HTTP_CHECK_PORT)")
 )
+
+var errPodFilterRequired = errors.New("either --statefulset or --pod-label-selector (or both) must be provided")
+
+func requirePodFilter(statefulSetName, podLabelSelector string) error {
+	if statefulSetName == "" && podLabelSelector == "" {
+		return errPodFilterRequired
+	}
+	return nil
+}
 
 func main() {
 	zopts := zap.Options{Development: false}
 	zopts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	if *statefulSetName == "" && *podLabelSelector == "" {
-		ctrl.Log.Error(nil, "Either --statefulset or --pod-label-selector (or both) must be provided")
-		os.Exit(1)
-	}
-
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zopts)))
 	log := ctrl.Log.WithName("restarter")
+
+	if err := requirePodFilter(*statefulSetName, *podLabelSelector); err != nil {
+		log.Error(err, "invalid configuration")
+		os.Exit(1)
+	}
 
 	log.Info("Starting restarter controller",
 		"namespace", *namespace,
@@ -95,6 +107,7 @@ func main() {
 		"healthCheckTimeout", *healthCheckTimeout,
 		"execCheckCommand", *execCheckCommand,
 		"tcpCheckPort", *tcpCheckPort,
+		"httpCheckPort", *httpCheckPort,
 	)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -132,6 +145,7 @@ func main() {
 		HealthChecker:    healthChecker,
 		HealthCheckOptions: health.HealthCheckOptions{
 			HTTPCheckURL:   *healthCheckURL,
+			HTTPCheckPort:  *httpCheckPort,
 			ExecCommand:    *execCheckCommand,
 			TCPPort:        *tcpCheckPort,
 			ContainerName:  *execCheckContainer,

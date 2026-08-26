@@ -32,6 +32,7 @@ Flags (all can be set via environment variables):
 - `--statefulset` / `STATEFULSET_NAME` (optional): Name of the StatefulSet to monitor. Either this or `--pod-label-selector` must be provided
 - `--pod-label-selector` / `POD_LABEL_SELECTOR` (optional): Pod label selector (e.g., `app=router,component=druid`). Either this or `--statefulset` must be provided
 - `--health-check-url` / `HEALTH_CHECK_URL` (optional): HTTP health check URL path (e.g., `/health`)
+- `--http-check-port` / `HTTP_CHECK_PORT` (optional): HTTP health check port (defaults to 8080 when `--health-check-url` is set)
 - `--health-check-timeout` / `HEALTH_CHECK_TIMEOUT` (default: "5s"): Timeout for all health checks
 - `--exec-check-command` / `EXEC_CHECK_COMMAND` (optional): Command to execute in container (e.g., `ps aux | grep java`)
 - `--exec-check-container` / `EXEC_CHECK_CONTAINER` (optional): Container name for exec check (empty for first container)
@@ -66,6 +67,11 @@ restarter --namespace druid --statefulset druid-router --pod-label-selector "app
 **Monitor with HTTP health check:**
 ```bash
 restarter --namespace druid --statefulset druid-router --health-check-url /status/health
+```
+
+**Monitor with HTTP health check on a non-default port:**
+```bash
+restarter --namespace druid --statefulset druid-router --health-check-url /status/health --http-check-port 9090
 ```
 
 **Using environment variables:**
@@ -142,10 +148,13 @@ Update environment variables in `manifests/restarter.yaml`:
 - `NAMESPACE` - Target namespace to monitor
 - `STATEFULSET_NAME` or `POD_LABEL_SELECTOR` - Pod filtering criteria
 - `HEALTH_CHECK_URL` - Optional HTTP health check endpoint
+- `HTTP_CHECK_PORT` - Optional HTTP health check port (defaults to 8080 when `HEALTH_CHECK_URL` is set)
 - `HEALTH_CHECK_TIMEOUT` - Health check timeout
 - `EXEC_CHECK_COMMAND` - Optional exec command for health checks
+- `EXEC_CHECK_CONTAINER` - Optional container name for exec checks
+- `EXEC_CHECK_EXPECTED` - Optional expected exec output
 - `TCP_CHECK_PORT` - Optional TCP port check
-- `HEALTH_PROBE_BIND_ADDRESS` - Health probe bind address (default: ":8080")
+- `HEALTH_PROBE_BIND_ADDRESS` - Bind address for manager health probes (`/healthz`, `/readyz`). Default `"0"` disables probes; the sample manifest sets `:8080`
 
 ### Example Deployment
 

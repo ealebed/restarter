@@ -36,12 +36,13 @@ The deployment uses environment variables for configuration. Update them in `res
 - **STATEFULSET_NAME** (optional): StatefulSet name to monitor
 - **POD_LABEL_SELECTOR** (optional): Pod label selector (e.g., `app=router,component=druid`)
 - **HEALTH_CHECK_URL** (optional): HTTP health check endpoint path
+- **HTTP_CHECK_PORT** (optional): HTTP health check port (defaults to 8080 when `HEALTH_CHECK_URL` is set)
 - **HEALTH_CHECK_TIMEOUT** (optional): Health check timeout (default: 5s)
 - **EXEC_CHECK_COMMAND** (optional): Command to execute in container for health check
 - **EXEC_CHECK_CONTAINER** (optional): Container name for exec check (empty for first container)
 - **EXEC_CHECK_EXPECTED** (optional): Expected output from exec command
 - **TCP_CHECK_PORT** (optional): TCP port to check for connectivity
-- **HEALTH_PROBE_BIND_ADDRESS** (default: ":8080"): Bind address for health probes
+- **HEALTH_PROBE_BIND_ADDRESS**: Bind address for manager health probes (`/healthz`, `/readyz`). The binary defaults to `"0"` (probes disabled). The sample manifest sets `:8080` to enable them.
 
 **Note**: Either `STATEFULSET_NAME` or `POD_LABEL_SELECTOR` must be set.
 
@@ -113,7 +114,7 @@ The deployment includes:
 
 ## Health Probes
 
-The deployment includes health probes that use the controller-runtime manager's built-in `/healthz` and `/readyz` endpoints. These are enabled by default via the `HEALTH_PROBE_BIND_ADDRESS` environment variable set to `:8080`.
+The deployment includes health probes that use the controller-runtime manager's built-in `/healthz` and `/readyz` endpoints. These are enabled in the sample manifest by setting `HEALTH_PROBE_BIND_ADDRESS` to `:8080`. The binary itself defaults to `"0"`, which disables probes (useful for local CLI runs).
 
 The controller-runtime manager automatically provides these endpoints when `HealthProbeBindAddress` is set.
 
