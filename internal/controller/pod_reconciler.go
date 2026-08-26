@@ -56,7 +56,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	logger.Info("Reconciling pod", "phase", pod.Status.Phase)
 
-	healthy, err := r.HealthChecker.IsPodHealthy(ctx, &pod, r.HealthCheckOptions)
+	healthy, err := r.HealthChecker.IsPodHealthy(ctx, &pod, &r.HealthCheckOptions)
 	if err != nil {
 		logger.Error(err, "Failed to check pod health")
 		return ctrl.Result{RequeueAfter: requeueDelay}, nil

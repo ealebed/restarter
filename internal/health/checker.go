@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 )
+
+const defaultHTTPCheckPort = 8080
 
 // Checker performs health checks on pods.
 type Checker struct {
@@ -43,6 +46,7 @@ func (c *Checker) SetKubernetesClient(client kubernetes.Interface, config *rest.
 // HealthCheckOptions contains options for health checking.
 type HealthCheckOptions struct {
 	HTTPCheckURL   string // HTTP health check URL path (e.g., "/health")
+	HTTPCheckPort  int    // HTTP health check port (0 defaults to 8080)
 	ExecCommand    string // Command to execute in container (e.g., "ps aux | grep java")
 	TCPPort        int    // TCP port to check (0 to disable)
 	ContainerName  string // Container name (empty for first container)
@@ -50,7 +54,7 @@ type HealthCheckOptions struct {
 }
 
 // IsPodHealthy checks if a pod is healthy based on its status and optional health checks.
-func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts HealthCheckOptions) (bool, error) {
+func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts *HealthCheckOptions) (bool, error) {
 	if pod.Status.Phase != corev1.PodRunning {
 		return false, nil
 	}
@@ -62,7 +66,7 @@ func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts Health
 	}
 
 	if opts.HTTPCheckURL != "" {
-		healthy, err := c.checkHTTPHealth(ctx, pod, opts.HTTPCheckURL)
+		healthy, err := c.checkHTTPHealth(ctx, pod, opts.HTTPCheckURL, opts.HTTPCheckPort)
 		if err != nil {
 			return false, fmt.Errorf("http health check failed: %w", err)
 		}
@@ -94,14 +98,22 @@ func (c *Checker) IsPodHealthy(ctx context.Context, pod *corev1.Pod, opts Health
 	return true, nil
 }
 
+// buildHTTPHealthURL joins pod IP, port, and path into an HTTP URL.
+// Port 0 (unset) uses defaultHTTPCheckPort. IPv6 addresses are bracketed.
+func buildHTTPHealthURL(podIP string, port int, path string) string {
+	if port <= 0 {
+		port = defaultHTTPCheckPort
+	}
+	return "http://" + net.JoinHostPort(podIP, strconv.Itoa(port)) + path
+}
+
 // checkHTTPHealth performs an HTTP health check on a pod.
-func (c *Checker) checkHTTPHealth(ctx context.Context, pod *corev1.Pod, healthCheckURL string) (bool, error) {
+func (c *Checker) checkHTTPHealth(ctx context.Context, pod *corev1.Pod, healthCheckURL string, port int) (bool, error) {
 	if pod.Status.PodIP == "" {
 		return false, fmt.Errorf("pod IP is not available")
 	}
 
-	// healthCheckURL is a path (e.g., "/health"); port defaults to 8080.
-	url := fmt.Sprintf("http://%s:8080%s", pod.Status.PodIP, healthCheckURL)
+	url := buildHTTPHealthURL(pod.Status.PodIP, port, healthCheckURL)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
@@ -124,7 +136,7 @@ func (c *Checker) checkTCPPort(ctx context.Context, pod *corev1.Pod, port int) (
 	}
 
 	dialer := net.Dialer{Timeout: c.timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", pod.Status.PodIP, port))
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(pod.Status.PodIP, strconv.Itoa(port)))
 	if err != nil {
 		return false, nil // not accepting connections → unhealthy
 	}

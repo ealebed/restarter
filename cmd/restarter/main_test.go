@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -59,6 +60,35 @@ func TestParseIntOrDefault(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := parseIntOrDefault(tt.input, tt.fallback); got != tt.want {
 				t.Errorf("parseIntOrDefault(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRequirePodFilter(t *testing.T) {
+	tests := []struct {
+		name             string
+		statefulSetName  string
+		podLabelSelector string
+		wantErr          error
+	}{
+		{name: "neither", wantErr: errPodFilterRequired},
+		{name: "statefulset only", statefulSetName: "web"},
+		{name: "label selector only", podLabelSelector: "app=web"},
+		{name: "both", statefulSetName: "web", podLabelSelector: "app=web"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := requirePodFilter(tt.statefulSetName, tt.podLabelSelector)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("requirePodFilter() unexpected error: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("requirePodFilter() error = %v, want %v", err, tt.wantErr)
 			}
 		})
 	}

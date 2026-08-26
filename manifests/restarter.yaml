@@ -78,6 +78,8 @@ spec:
         # Optional: HTTP health check configuration
         - name: HEALTH_CHECK_URL
           value: ""
+        # - name: HTTP_CHECK_PORT
+        #   value: "8080"
         - name: HEALTH_CHECK_TIMEOUT
           value: "5s"
         # Optional: Exec-based health check (detects stuck applications)
