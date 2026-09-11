@@ -311,3 +311,6 @@ make test
 # Run tests with race detector
 make test-race
 ```
+
+## Dependabot automation
+Minor and patch Dependabot PRs are approved and squash-merged by a GitHub App after required CI passes. See [Dependabot automation](./docs/dependabot-automation.md).
